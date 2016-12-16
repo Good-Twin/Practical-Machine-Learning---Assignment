@@ -1,0 +1,146 @@
+---
+title: "Weight Lifting Exercise Classification"
+author: "Robert Pollack"
+date: "15. Dezember 2016"
+output: html_document
+---
+
+##Background of the Analysis
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+##Preparation
+
+The following code loads all required libraries and sets the seed to ensure reproducibility of the analysis and loads the training and test data set.
+
+```{r  warning=F, message=F, tidy=TRUE}
+library(caret)
+library(randomForest)
+library(rpart)
+library(rattle)
+library(rpart)
+library(ggplot2)
+library(reshape2)
+
+set.seed(1234)
+wle_data = read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",
+                    stringsAsFactors=FALSE,
+                    na.strings=c("NA","#DIV/0!", ""))
+
+
+wle_test = read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",
+                    stringsAsFactors=FALSE,
+                    na.strings=c("NA","#DIV/0!", ""))
+```
+
+
+Examining the variables we can see that a lot of them contain no information at all.
+
+```{r  warning=F, message=F, tidy=TRUE}
+sapply(wle_data, function(x) sum(is.na(x)))
+```
+
+
+For prediction we will remove the variables containing NA-values and we will only regard those variables that measure the movement of the barbell, thus ommiting the first seven variables in the dataset.
+
+```{r  warning=F, message=F, tidy=TRUE}
+wle_data$classe <- as.factor(wle_data$classe)
+
+wle_data <- wle_data[,colSums(is.na(wle_data)) == 0]
+wle_data <-wle_data[,-c(1:7)]
+
+wle_test <- wle_test[,colSums(is.na(wle_test)) == 0]
+wle_test <- wle_test[,-c(1:7)]
+```
+
+
+
+## Model creation and selection
+
+During the analysis two models were created, a classification tree and random forest. For cross validation, the data are splitted into training and test set.
+
+```{r  warning=F, message=F, tidy=TRUE}
+samples <- createDataPartition(y=wle_data$classe, p=0.75, list=FALSE)
+training <- wle_data[samples, ] 
+testing <- wle_data[-samples, ]
+```
+
+From this we will train and test the classification Tree.
+
+```{r  warning=F, message=F, tidy=TRUE}
+mod_tree <- train(classe ~. , data=training, method="rpart")
+pred_tree <- predict(mod_tree, testing)
+confm_tree <- confusionMatrix(pred_tree, testing$classe)
+```
+
+We can visualize the confusion matrix with a heat map and investigate the model performance.
+```{r  warning=F, message=F, tidy=TRUE}
+df_confm_tree <- as.data.frame.matrix(confm_tree$table)
+df_confm_tree$level <- names(df_confm_tree)
+df_confm_tree <- melt(df_confm_tree)
+
+p_tree <- ggplot(df_confm_tree, aes(x=level, y=variable, fill=value)) +
+      theme_bw() +
+      ggtitle("Confusion Matrix for Classification Tree") +
+      geom_tile() +
+      geom_text(aes(label=paste(value))) +
+      scale_fill_gradient2(midpoint = max(df_confm_tree$value)/2  ,high="red4", low="khaki1", mid="darkorange", name ="") 
+p_tree
+
+```
+
+You can see from the plot that the classification tree does not work well for this data. The accuracy is `r round(confm_tree$overall[1],4)` hence the modell has a error rate of  `r round(1 - confm_tree$overall[1],4)`.
+
+The second model we will apply on the data is a random forest.
+
+
+```{r  warning=F, message=F, tidy=TRUE}
+mod_rf <- randomForest(classe ~. , data=training, method="class")
+predict_rf <- predict(mod_rf, testing)
+confm_rf <- confusionMatrix(predict_rf, testing$classe)
+```
+
+
+The following chart shows the confusion matrix for the random forest.
+
+
+```{r  warning=F, message=F, tidy=TRUE}
+df_confm_rf <- as.data.frame.matrix(confm_rf$table)
+df_confm_rf$level <- names(df_confm_rf)
+df_confm_rf <- melt(df_confm_rf)
+
+p_rf <- ggplot(df_confm_rf, aes(x=level, y=variable, fill=value)) + 
+    theme_bw() +
+    geom_tile() +  
+    ggtitle("Confusion Matrix for Random Forest") +
+    geom_text(aes(label=paste(value))) +  
+    scale_fill_gradient2(midpoint = max(df_confm_rf$value)/2  ,high="red4", low="khaki1", mid="darkorange", name="")
+p_rf
+```
+
+
+The random forest seems to work better than the classification tree. The accuracy is `r round(confm_rf$overall[1],4)` hence the modell has a error rate of  `r round(1 - confm_rf$overall[1],4)`.
+
+We will use this modell to predict the classes for the given test data set.
+
+```{r  warning=F, message=F, tidy=TRUE}
+predict_final <- predict(mod_rf, wle_test)
+predict_final
+```
+
+
+
+
+
+
+
+
